@@ -1,0 +1,8 @@
+# Ejecutables compilados
+bin/
+
+# Estado local de la aplicación (instancias de TU máquina)
+data/
+
+# Llaves (nunca subirlas)
+*.key

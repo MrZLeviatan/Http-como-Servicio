@@ -1,0 +1,42 @@
+{
+  "servidor": {
+    "direccion": ":8080"
+  },
+  "virtualbox": {
+    "ejecutable": "VBoxManage",
+    "disco_plantilla": "/run/media/mrz_leviatan/data/Maquinas Virtuales/Practica - Nube/VM´s/Parcial #3/Parcial _3 - Base ApacheServer/Parcial #3 - Base ApacheServer-disk1.vdi",
+    "carpeta_vms": "/run/media/mrz_leviatan/data/Maquinas Virtuales/Practica - Nube/VM´s/Parcial #3/Instancias",
+    "tipo_so": "Debian13_64",
+    "memoria_mb": 512,
+    "cpus": 1,
+    "red_hostonly": "vboxnet0",
+    "controlador": "SATA"
+  },
+  "red": {
+    "ip_plantilla": "192.168.10.20",
+    "prefijo": "192.168.10.",
+    "host_inicio": 30,
+    "host_fin": 250,
+    "mascara": 24
+  },
+  "ssh": {
+    "usuario": "parcial2",
+    "llave_privada": "~/.ssh/id_ed25519",
+    "tiempo_conexion_seg": 5,
+    "espera_arranque_seg": 240
+  },
+  "dns": {
+    "ejecutable": "nsupdate",
+    "servidor": "192.168.10.10",
+    "zona": "cloud.local",
+    "llave_tsig": "~/httppaas/ddns.key",
+    "ttl": 300,
+    "hosts_reservados": ["ns", "plantilla", "www"]
+  },
+  "almacenamiento": {
+    "archivo": "data/instancias.json"
+  },
+  "publicacion": {
+    "tamano_maximo_mb": 50
+  }
+}

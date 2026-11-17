@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#100d18">
+    <title>{{.Titulo}}</title>
+    <link rel="stylesheet" href="/static/estilos.css">
+</head>
+<body>
+    <div class="page-shell">
+
+        <!-- ═════════ Cabecera: título, dominio y equipo que ejecuta la app ═════════ -->
+        <header class="site-header">
+            <div class="brand">
+                <p class="eyebrow">Computación en la nube 2026-2 · HTTPPaaS</p>
+                <h1>{{.Titulo}}</h1>
+                <p class="subtitle">Publica páginas web temporales en instancias Apache dentro de <strong>{{.Zona}}</strong></p>
+            </div>
+            <div class="badges">
+                <div class="hostname">Dominio: {{.Zona}}</div>
+                <div class="hostname hostname--muted">Host: {{.Equipo}}</div>
+            </div>
+        </header>
+
+        <main>
+
+            <!-- ═════════ Mensaje de resultado de la última acción ═════════ -->
+            {{if .Mensaje}}
+                <p class="flash flash--{{if eq .TipoMensaje "error"}}error{{else}}ok{{end}}" role="status">{{.Mensaje}}</p>
+            {{end}}
+
+            <!-- ═════════ Formularios: crear instancia y publicar contenido ═════════ -->
+            <section class="forms-grid" aria-label="Acciones">
+
+                <!-- 1) Nombre del host → Aceptar: crea la VM y el registro DNS -->
+                <form class="panel" method="post" action="/instancias" data-formulario>
+                    <h2><span class="step">1</span> Nueva instancia</h2>
+                    <p class="panel-help">Crea una máquina virtual con Apache y registra su nombre en el DNS.</p>
+
+                    <label class="field-label" for="nombre">Nombre del host</label>
+                    <div class="input-row">
+                        <div class="input-suffix">
+                            <input id="nombre" name="nombre" type="text" required
+                                   placeholder="paisajes" autocomplete="off" spellcheck="false"
+                                   maxlength="63" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?"
+                                   title="Solo minúsculas, números y guiones (sin espacios ni tildes)">
+                            <span>.{{.Zona}}</span>
+                        </div>
+                        <button type="submit" class="btn btn--primary">Aceptar</button>
+                    </div>
+                </form>
+
+                <!-- 2) Contenido web (comprimido) → Publicar: sube el .zip a la instancia -->
+                <form class="panel" method="post" action="/publicar" enctype="multipart/form-data" data-formulario>
+                    <h2><span class="step">2</span> Publicar contenido</h2>
+                    <p class="panel-help">Sube un <code>.zip</code> con tu página (debe incluir <code>index.html</code>). Máximo {{.MaximoMB}} MB.</p>
+
+                    <label class="field-label" for="destino">Instancia</label>
+                    {{if .Publicables}}
+                        <select id="destino" name="nombre" required>
+                            {{range .Publicables}}
+                                <option value="{{.Nombre}}">{{.Dominio}}</option>
+                            {{end}}
+                        </select>
+                    {{else}}
+                        <select id="destino" name="nombre" disabled>
+                            <option>No hay instancias listas todavía</option>
+                        </select>
+                    {{end}}
+
+                    <label class="field-label" for="archivo">Contenido web (comprimido)</label>
+                    <div class="input-row">
+                        <input id="archivo" name="archivo" type="file" accept=".zip,application/zip" required {{if not .Publicables}}disabled{{end}}>
+                        <button type="submit" class="btn btn--primary" {{if not .Publicables}}disabled{{end}}>Publicar</button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- ═════════ Dashboard: instancias disponibles ═════════ -->
+            <section class="instances" aria-labelledby="titulo-instancias">
+                <div class="section-heading">
+                    <h2 id="titulo-instancias">Instancias disponibles</h2>
+                    <span class="counter">{{len .Instancias}} en total</span>
+                </div>
+
+                {{if .Instancias}}
+                    <div class="table-wrap">
+                        <table class="instances-table">
+                            <thead>
+                                <tr>
+                                    <th>Enlace</th>
+                                    <th>Dirección IP</th>
+                                    <th>Host / VM</th>
+                                    <th>Estado</th>
+                                    <th>Creada</th>
+                                    <th><span class="sr-only">Acciones</span></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {{range .Instancias}}
+                                    <tr>
+                                        <!-- Enlace: solo es clicable cuando la instancia ya funciona -->
+                                        <td data-label="Enlace">
+                                            {{if .PuedePublicar}}
+                                                <a class="link" href="{{.URL}}" target="_blank" rel="noopener">{{.URL}}</a>
+                                            {{else}}
+                                                <span class="link link--off">{{.URL}}</span>
+                                            {{end}}
+                                        </td>
+                                        <td data-label="Dirección IP" class="mono">{{.IPConMascara}}</td>
+                                        <td data-label="Host / VM" class="mono">{{.Nombre}}</td>
+                                        <td data-label="Estado">
+                                            <span class="status status--{{.Estado}}">
+                                                {{if .EnProceso}}<span class="spinner" aria-hidden="true"></span>{{end}}
+                                                {{.Estado}}
+                                            </span>
+                                            {{if .Detalle}}<p class="detail">{{.Detalle}}</p>{{end}}
+                                            {{if .Archivo}}<p class="detail">Archivo: <span class="mono">{{.Archivo}}</span> · {{fecha .PublicadaEn}}</p>{{end}}
+                                        </td>
+                                        <td data-label="Creada" class="mono">{{fecha .CreadaEn}}</td>
+                                        <td class="actions">
+                                            <form method="post" action="/instancias/{{.Nombre}}/eliminar"
+                                                  data-confirmar="¿Eliminar {{.Dominio}}? Se apagará y borrará su máquina virtual.">
+                                                <button type="submit" class="btn btn--danger" {{if not .PuedeEliminar}}disabled{{end}}>Eliminar</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                {{end}}
+                            </tbody>
+                        </table>
+                    </div>
+                {{else}}
+                    <p class="empty-state">Aún no hay instancias. Escribe un nombre de host y pulsa <strong>Aceptar</strong> para crear la primera.</p>
+                {{end}}
+            </section>
+        </main>
+
+        <footer class="site-footer">
+            VirtualBox · Apache · Bind9 · Go
+            {{if .HayProcesos}}<span class="live" data-en-vivo>Actualizando automáticamente…</span>{{end}}
+        </footer>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
