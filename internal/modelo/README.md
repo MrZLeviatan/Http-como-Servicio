@@ -15,7 +15,7 @@ Define qué es una **instancia** y su **ciclo de vida**. No depende de ningún o
 | `Archivo` | `sitio.zip` | Último `.zip` publicado |
 | `CreadaEn` / `PublicadaEn` | fechas | Momento de creación y de última publicación |
 
-Métodos: `URL()`, `IPConMascara()`, `EnProceso()`, `PuedePublicar()`, `PuedeEliminar()`.
+Métodos: `URL()`, `IPConMascara()`, `EnProceso()`, `Activa()`, `EstadoActivo()`, `PuedePublicar()`, `PuedeApagar()`, `PuedeEncender()`, `PuedeEliminar()`.
 
 ## Ciclo de vida
 
@@ -33,11 +33,20 @@ Métodos: `URL()`, `IPConMascara()`, `EnProceso()`, `PuedePublicar()`, `PuedeEli
                      Eliminar
 ```
 
-| Estado | ¿Publicar? | ¿Eliminar? |
-|---|---|---|
-| `creando`, `configurando`, `publicando`, `eliminando` | No | No (en proceso) |
-| `lista`, `publicada` | Sí | Sí |
-| `error` | No | Sí |
+Encendido y apagado (sin borrar la VM):
+
+```
+ lista / publicada ──Apagar──► apagando ──► apagada ──Encender──► encendiendo ──► lista / publicada
+```
+
+Al encender, la instancia vuelve al estado que tenía: `publicada` si alguna vez se publicó contenido (`EstadoActivo()`), o `lista` si no.
+
+| Estado | ¿Publicar? | ¿Apagar? | ¿Encender? | ¿Eliminar? |
+|---|---|---|---|---|
+| `creando`, `configurando`, `publicando`, `apagando`, `encendiendo`, `eliminando` | No | No | No | No (en proceso) |
+| `lista`, `publicada` | Sí | Sí | No | Sí |
+| `apagada` | No | No | Sí | Sí |
+| `error` | No | No | No | Sí |
 
 ## Validación de nombres
 

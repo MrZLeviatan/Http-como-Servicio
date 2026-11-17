@@ -79,6 +79,10 @@ func main() {
 	ctx, detener := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer detener()
 
+	// Revisa cada 15 s si alguna VM se encendió o apagó desde VirtualBox
+	// y corrige su estado en el dashboard. Se detiene con Ctrl+C.
+	aprov.IniciarSincronizacion(ctx)
+
 	// 8. Arrancar el servidor en una goroutine (para que main pueda esperar Ctrl+C).
 	go func() {
 		// ListenAndServe bloquea hasta que el servidor se cierra.

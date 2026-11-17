@@ -9,6 +9,9 @@ Es el **cerebro** del servicio: combina `virtualbox`, `remoto`, `dns` y `almacen
 | `SolicitarInstancia(nombre)` | Valida, reserva IP y registra en estado `creando` | `crear()` |
 | `Publicar(nombre, zip, original)` | Pasa a `publicando` si está `lista`/`publicada` | `publicar()` |
 | `Eliminar(nombre)` | Pasa a `eliminando` si no está ocupada | `eliminar()` |
+| `Apagar(nombre)` | Pasa a `apagando` si está `lista`/`publicada` | `apagar()` |
+| `Encender(nombre)` | Pasa a `encendiendo` si está `apagada` | `encender()` |
+| `IniciarSincronizacion(ctx)` | — | Cada 15 s compara los estados con VirtualBox |
 | `Esperar()` | Bloquea hasta que terminen todas las tareas (cierre ordenado) | — |
 
 ## Crear: paso a paso
@@ -41,6 +44,28 @@ Si falla, vuelve a `lista`/`publicada` con el error en `Detalle`, porque la VM s
 1. `virtualbox.Eliminar` (apaga + `unregistervm --delete`).
 2. `dns.Eliminar`. Si falla, solo se avisa: un registro huérfano no bloquea nada.
 3. `almacen.Eliminar`, que libera la IP para otra instancia.
+
+## Apagar y encender
+
+Apagar **no borra nada**: la VM, su disco diferencial, su contenido, su IP y su registro DNS se conservan. Solo deja de responder.
+
+| Acción | Pasos | Si falla |
+|---|---|---|
+| Apagar | `ApagarOrdenado` (ACPI, hasta 60 s; luego corte de energía) → `apagada` | Vuelve a `lista`/`publicada` con el error en `Detalle` |
+| Encender | `startvm --type headless` → espera SSH en **su** IP (no usa la `.20`) → vuelve a `lista`/`publicada` | No arrancó: sigue `apagada`. Arrancó pero no responde: `error` |
+
+Como al encender la VM ya tiene su IP definitiva, no necesita esperar turno con `muCreacion`.
+
+## Sincronización con VirtualBox
+
+Si alguien enciende o apaga una VM **desde VirtualBox**, el dashboard quedaría desactualizado. Cada 15 s, `sincronizar()` revisa las instancias en estado estable:
+
+| Guardado | En VirtualBox | Nuevo estado |
+|---|---|---|
+| `lista` / `publicada` | apagada | `apagada` ("se apagó fuera de la aplicación") |
+| `apagada` | `running` | `lista` / `publicada` ("se encendió fuera de la aplicación") |
+
+Las instancias con una operación en curso o con `error` no se tocan. El cambio se hace con `almacen.Actualizar`, comprobando que el estado no haya cambiado entretanto, así que nunca pisa una operación que empezó a mitad de la revisión.
 
 ## Concurrencia
 

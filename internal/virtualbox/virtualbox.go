@@ -188,6 +188,50 @@ func (c *Cliente) Apagar(ctx context.Context, nombre string) error {
 	}
 }
 
+// ApagarOrdenado pide a Debian que se apague solo (como pulsar el botón de
+// encendido de un PC: cierra Apache y los archivos correctamente). Si en
+// `espera` no se ha apagado, corta la energía con Apagar.
+func (c *Cliente) ApagarOrdenado(ctx context.Context, nombre string, espera time.Duration) error {
+	// Consulta el estado actual; si ya está apagada, no hay nada que hacer.
+	estado, err := c.Estado(ctx, nombre)
+	if err != nil {
+		return err
+	}
+	if apagada(estado) {
+		return nil
+	}
+
+	// Envía la señal ACPI de "botón de encendido" al sistema operativo.
+	if _, err := c.vbox(ctx, "controlvm", nombre, "acpipowerbutton"); err != nil {
+		return err
+	}
+
+	// Revisa cada segundo si ya se apagó, hasta que pase el tiempo de espera.
+	limite := time.Now().Add(espera)
+	for time.Now().Before(limite) {
+		if estado, err := c.Estado(ctx, nombre); err == nil && apagada(estado) {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+		}
+	}
+
+	// No respondió a tiempo: apagado forzado.
+	return c.Apagar(ctx, nombre)
+}
+
+// Encendida indica si la VM está corriendo según VirtualBox.
+func (c *Cliente) Encendida(ctx context.Context, nombre string) (bool, error) {
+	estado, err := c.Estado(ctx, nombre)
+	if err != nil {
+		return false, err
+	}
+	return estado == "running", nil
+}
+
 // Eliminar apaga la VM y la borra de VirtualBox junto con su disco diferencial.
 //
 // "unregistervm --delete" solo borra los discos conectados DIRECTAMENTE a la

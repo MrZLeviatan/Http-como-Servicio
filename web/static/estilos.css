@@ -263,6 +263,15 @@ input[type="file"]::file-selector-button {
 .btn--primary { background: #7651a6; color: #fff; }
 .btn--primary:hover:not(:disabled) { background: #8a63bd; }
 
+.btn--secondary {
+    padding: 6px 12px;
+    border-color: var(--border-accent);
+    background: transparent;
+    color: var(--accent-soft);
+    font-size: 0.82rem;
+}
+.btn--secondary:hover:not(:disabled) { background: rgba(118, 81, 166, 0.25); }
+
 .btn--danger {
     padding: 6px 12px;
     border-color: rgba(224, 86, 111, 0.6);
@@ -313,8 +322,10 @@ input[type="file"]::file-selector-button {
 .instances-table tbody tr:hover { background: rgba(118, 81, 166, 0.06); }
 
 .mono { font-family: var(--mono); font-size: 0.84rem; white-space: nowrap; }
-.actions { text-align: right; }
-.actions form { margin: 0; }
+/* Botones de cada fila apilados (Encender/Apagar arriba, Eliminar abajo) */
+.actions form { margin: 0 0 6px; }
+.actions form:last-child { margin-bottom: 0; }
+.actions .btn { width: 100%; }
 
 .link {
     color: var(--accent-soft);
@@ -322,7 +333,7 @@ input[type="file"]::file-selector-button {
     font-size: 0.86rem;
     text-decoration-color: rgba(226, 197, 255, 0.4);
     text-underline-offset: 3px;
-    overflow-wrap: anywhere;
+    white-space: nowrap;
 }
 .link:hover { color: #fff; }
 .link--off { color: var(--muted); text-decoration: none; }
@@ -349,8 +360,10 @@ input[type="file"]::file-selector-button {
     white-space: nowrap;
 }
 .status--lista, .status--publicada { border-color: rgba(143, 227, 180, 0.45); color: var(--ok); }
-.status--creando, .status--configurando,
-.status--publicando, .status--eliminando { border-color: rgba(158, 197, 255, 0.45); color: var(--info); }
+.status--creando, .status--configurando, .status--publicando,
+.status--encendiendo, .status--apagando,
+.status--eliminando { border-color: rgba(158, 197, 255, 0.45); color: var(--info); }
+.status--apagada { border-color: var(--border); color: var(--muted); }
 .status--error { border-color: rgba(255, 154, 175, 0.5); color: var(--warning); }
 
 /* Círculo girando para los estados en proceso */
@@ -431,7 +444,9 @@ input[type="file"]::file-selector-button {
         letter-spacing: 0.06em;
         text-transform: uppercase;
     }
-    .actions { padding-bottom: 14px !important; text-align: left; }
+    .instances-table td.actions { display: flex; gap: 8px; padding-bottom: 14px; }
+    .actions form { margin: 0; }
+    .actions .btn { width: auto; }
     .site-footer { flex-direction: column; }
 }
 

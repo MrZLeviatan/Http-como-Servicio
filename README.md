@@ -1,16 +1,28 @@
 # HTTPPaaS — Servicio administrado de servidores HTTP
 
-**Computación en la nube 2026-2 · Nota parcial #3**
 
 Plataforma local que simula un servicio de nube: un usuario escribe un nombre de host, sube un `.zip` con su página y el sistema, **sin intervención manual**:
 
 1. Crea una máquina virtual Debian 13 con Apache a partir de un **disco multiconexión** (VirtualBox).
-2. Le asigna hostname e IP propios (`paisajes` → `192.168.10.30`).
-3. Registra `paisajes.cloud.local` en el **DNS Bind9**.
+2. Le asigna hostname e IP propios.
+3. Registra `nombre.cloud.local` en el **DNS Bind9**.
 4. Despliega el contenido del `.zip` en Apache.
 5. Lo muestra en un **dashboard** con su enlace, IP, hostname, fecha y botón **Eliminar**.
 
+<br>
+
+<br>
+
+> **Universidad del Quindío**  
+> **Programa:** Ingeniería de Sistemas y Computación  
+> **Curso:** Computación en la Nube (2026-2)  
+> **Autor:** Nicolas Cabrera Serrano
+
+
 ---
+
+<br>
+
 
 ## Arquitectura
 
@@ -43,17 +55,26 @@ Plataforma local que simula un servicio de nube: un usuario escribe un nombre de
 
 ---
 
+
+<br>
+
+
 ## Flujo de una solicitud
 
 | Acción en la web | Qué ocurre | Estados |
 |---|---|---|
 | **Aceptar** (nombre del host) | Reserva IP → crea VM con el disco multiconexión → arranca en `.20` → ejecuta `configurar-instancia.sh` (hostname, IP, VirtualHost) → reinicia → verifica hostname en la IP nueva → `nsupdate` agrega el registro A → verifica la resolución | `creando` → `configurando` → `lista` |
 | **Publicar** (.zip) | Valida el .zip → `scp` a la VM → `desplegar-sitio.sh` lo descomprime en `/var/www/<host>` → recarga Apache | `publicando` → `publicada` |
+| **Apagar** | Apagado ordenado (ACPI, hasta 60 s; si no, corte de energía). Se conservan disco, contenido, IP y DNS | `apagando` → `apagada` |
+| **Encender** | Arranca la VM → espera SSH en su IP → vuelve a su estado anterior | `encendiendo` → `lista`/`publicada` |
 | **Eliminar** | Apaga la VM → `unregistervm --delete` (borra solo su disco diferencial) → `nsupdate` borra el registro → sale del dashboard | `eliminando` → (desaparece) |
+| **Publicar otra vez** en la misma instancia | `desplegar-sitio.sh` borra el contenido anterior de `/var/www/<host>` y pone el nuevo. Mismo nombre, IP y DNS | `publicando` → `publicada` |
 
-Las operaciones largas corren en **segundo plano**; el dashboard se actualiza solo cada 4 s. Las creaciones se hacen **de una en una**, porque todas arrancan con la IP temporal `.20`.
+Las operaciones largas corren en **segundo plano**; el dashboard se actualiza solo cada 4 s. Cada 15 s la app compara los estados con VirtualBox, así que si apagas o enciendes una VM desde VirtualBox el dashboard lo refleja. Las creaciones se hacen **de una en una**, porque todas arrancan con la IP temporal `.20`.
 
 ---
+
+<br>
 
 ## Estructura del proyecto
 
@@ -81,22 +102,7 @@ Cada carpeta tiene su propio `README.md` con el detalle del módulo.
 
 ---
 
-## Requisitos previos
-
-Fases 1 y 2 de la guía completadas:
-
-- [x] Red host-only `vboxnet0` con `192.168.10.1/24`, sin DHCP.
-- [x] VM DNS (`ns`, `192.168.10.10`) con Bind9, zona `cloud.local` y llave `ddns-key`.
-- [x] Llave TSIG copiada al PC (`~/httppaas/ddns.key`).
-- [x] Plantilla Apache en `192.168.10.20` con:
-  - `apache2`, `unzip`, `sudo`
-  - tu llave SSH en `authorized_keys`
-  - `sudo` sin contraseña para el usuario
-  - `/usr/local/bin/configurar-instancia.sh` y `/usr/local/bin/desplegar-sitio.sh`
-- [x] Disco de la plantilla en modo **multiconexión** (`Type: multiattach`).
-- [x] En el PC: Go ≥ 1.24, VirtualBox (`VBoxManage`), `ssh`, `scp`, `nsupdate` (`bind9-dnsutils`).
-
----
+<br>
 
 ## Configuración
 
@@ -106,13 +112,15 @@ Edita [`config.json`](config.json). Los campos que **debes revisar**:
 |---|---|
 | `virtualbox.disco_plantilla` | Ruta exacta del `.vdi` multiconexión |
 | `virtualbox.carpeta_vms` | Carpeta donde se guardarán las instancias |
-| `ssh.usuario` | Usuario de la plantilla (`parcial2` o `parcial3`) |
-| `ssh.llave_privada` | Llave cuya `.pub` copiaste a la plantilla |
+| `ssh.usuario` | Usuario de la plantilla (`parcial2`) |
+| `ssh.llave_privada` | Llave `.pub`. |
 | `dns.llave_tsig` | Ruta del `ddns.key` en tu PC |
 
 Al arrancar, la app valida todo y te dice exactamente qué falta. Detalle de cada campo: [internal/config/README.md](internal/config/README.md).
 
 ---
+
+<br>
 
 ## Ejecución
 
@@ -131,34 +139,6 @@ go build -o bin/httppaas ./cmd/httppaas
 
 Abre **http://localhost:8080**. Detén con `Ctrl+C` (espera a que terminen las operaciones en curso; un segundo `Ctrl+C` fuerza el cierre).
 
-### Probar el flujo completo
-
-1. Escribe `paisajes` → **Aceptar**. Espera ~1-3 min hasta el estado **Lista**.
-2. Crea un zip de prueba: `mkdir sitio && echo '<h1>Hola nube</h1>' > sitio/index.html && zip -r sitio.zip sitio`
-3. Elige `paisajes.cloud.local`, selecciona `sitio.zip` → **Publicar**.
-4. Abre el enlace `http://paisajes.cloud.local` (se abre en otra pestaña).
-5. **Eliminar** → la VM desaparece de VirtualBox y del DNS.
 
 ---
 
-## Solución de problemas
-
-| Síntoma | Causa probable / solución |
-|---|---|
-| Al arrancar: `Configuración inválida` | Lee la lista: ruta o programa faltante en `config.json` |
-| `la IP temporal 192.168.10.20 ya está en uso` | La plantilla u otra instancia quedó encendida en `.20`. Apágala |
-| Se queda en `creando` y pasa a `error` por SSH | La VM no arrancó o tu llave no está en la plantilla. Mira la VM en VirtualBox → *Mostrar* |
-| `el script de configuración falló` | Los scripts no están en `/usr/local/bin` o falta `sudo` sin contraseña |
-| `no se pudo actualizar el DNS ... BADKEY` | `dns.llave_tsig` no corresponde a la llave de Bind9 |
-| El enlace no abre en el navegador | Faltan los comandos `resolvectl` del paso 2 (se pierden al reiniciar el PC) |
-| Error en VirtualBox al crear | Ver la terminal de la app: muestra el comando `VBoxManage` exacto que falló |
-
-Los registros de cada operación aparecen en la terminal donde corre la app (`[crear]`, `[publicar]`, `[eliminar]`, `[web]`).
-
----
-
-## Notas de seguridad (entorno de laboratorio)
-
-- SSH no verifica la huella de las VMs (`StrictHostKeyChecking=no`), porque todas comparten el mismo disco y las IPs se reutilizan. En producción se usarían huellas únicas por VM.
-- El usuario de las VMs tiene `sudo` sin contraseña para que la automatización funcione sin interacción.
-- No incluyas la línea `secret` de `ddns.key` en capturas ni en el repositorio.

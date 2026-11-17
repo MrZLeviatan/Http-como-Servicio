@@ -61,7 +61,14 @@ func Abrir(ruta string) (*Almacen, error) {
 	for _, inst := range lista {
 		// Si la app se cerró a mitad de una operación, esa operación ya no
 		// sigue corriendo: se marca como error para que el usuario lo sepa.
-		if inst.EnProceso() {
+		switch {
+		// Un encendido o apagado interrumpido no daña la VM: se marca como
+		// apagada y la sincronización con VirtualBox corrige el estado real.
+		case inst.Estado == modelo.EstadoEncendiendo || inst.Estado == modelo.EstadoApagando:
+			inst.Estado = modelo.EstadoApagada
+			inst.Detalle = "Estado por confirmar: la aplicación se cerró durante un encendido o apagado."
+			corregido = true
+		case inst.EnProceso():
 			inst.Estado = modelo.EstadoError
 			inst.Detalle = "La operación se interrumpió porque la aplicación se cerró. Puedes eliminar la instancia."
 			corregido = true

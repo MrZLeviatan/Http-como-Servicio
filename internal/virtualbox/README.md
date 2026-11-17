@@ -10,7 +10,9 @@ Crea, arranca, apaga y elimina máquinas virtuales con `VBoxManage`, usando el *
 | `Crear(nombre)` | `createvm` → `modifyvm` → `storagectl` → `storageattach` |
 | `Iniciar(nombre)` | `startvm --type headless` |
 | `Estado(nombre)` | `showvminfo --machinereadable` → `VMState` |
-| `Apagar(nombre)` | `controlvm poweroff` y espera a `poweroff` |
+| `Apagar(nombre)` | `controlvm poweroff` (corte de energía) y espera a `poweroff` |
+| `ApagarOrdenado(nombre, espera)` | `controlvm acpipowerbutton` (Debian se apaga solo); si no termina en `espera`, `Apagar` |
+| `Encendida(nombre)` | `Estado` == `running` |
 | `Eliminar(nombre)` | `Apagar` + `unregistervm --delete` |
 
 ## Cómo se crea una instancia
@@ -50,4 +52,5 @@ ApacheServer.vdi  (base, solo lectura, Type: multiattach)
 ## Notas
 
 - La VM se llama igual que el hostname. `Existe` evita chocar con una VM que ya existe.
-- `Apagar` usa `poweroff` (corte de energía) porque la VM se va a borrar de todas formas.
+- Para **eliminar**, se usa `Apagar` (`poweroff`, inmediato), porque la VM se va a borrar de todas formas.
+- Para el botón **Apagar**, se usa `ApagarOrdenado`: la señal ACPI deja que Debian cierre Apache y el disco correctamente. Solo si no responde en 60 s se corta la energía.

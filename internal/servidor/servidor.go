@@ -78,6 +78,9 @@ func (s *Servidor) Rutas() http.Handler {
 	mux.HandleFunc("POST /publicar", s.publicarContenido)
 	// Botón Eliminar de cada fila.
 	mux.HandleFunc("POST /instancias/{nombre}/eliminar", s.eliminarInstancia)
+	// Botones Encender / Apagar de cada fila.
+	mux.HandleFunc("POST /instancias/{nombre}/encender", s.encenderInstancia)
+	mux.HandleFunc("POST /instancias/{nombre}/apagar", s.apagarInstancia)
 	// Listado en JSON (lo consulta la página para saber cuándo refrescar).
 	mux.HandleFunc("GET /api/instancias", s.apiInstancias)
 
@@ -172,6 +175,28 @@ func (s *Servidor) eliminarInstancia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirigir(w, r, "ok", "Eliminando "+nombre+"."+s.cfg.DNS.Zona)
+}
+
+// encenderInstancia atiende el botón "Encender" de una fila apagada.
+func (s *Servidor) encenderInstancia(w http.ResponseWriter, r *http.Request) {
+	// Lee la variable {nombre} de la URL /instancias/{nombre}/encender.
+	nombre := r.PathValue("nombre")
+	if err := s.aprov.Encender(nombre); err != nil {
+		redirigir(w, r, "error", err.Error())
+		return
+	}
+	redirigir(w, r, "ok", "Encendiendo "+nombre+"."+s.cfg.DNS.Zona+". Tarda menos de un minuto.")
+}
+
+// apagarInstancia atiende el botón "Apagar" de una fila encendida.
+func (s *Servidor) apagarInstancia(w http.ResponseWriter, r *http.Request) {
+	// Lee la variable {nombre} de la URL /instancias/{nombre}/apagar.
+	nombre := r.PathValue("nombre")
+	if err := s.aprov.Apagar(nombre); err != nil {
+		redirigir(w, r, "error", err.Error())
+		return
+	}
+	redirigir(w, r, "ok", "Apagando "+nombre+"."+s.cfg.DNS.Zona+". Se conservan su contenido, su IP y su DNS.")
 }
 
 // apiInstancias devuelve el listado en JSON. La página lo consulta cada pocos

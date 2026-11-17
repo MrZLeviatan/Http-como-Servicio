@@ -120,6 +120,17 @@
                                         </td>
                                         <td data-label="Creada" class="mono">{{fecha .CreadaEn}}</td>
                                         <td class="actions">
+                                            <!-- Encender / Apagar: solo se muestra el que aplica al estado actual -->
+                                            {{if .PuedeApagar}}
+                                                <form method="post" action="/instancias/{{.Nombre}}/apagar"
+                                                      data-confirmar="¿Apagar {{.Dominio}}? La página dejará de responder hasta que la enciendas.">
+                                                    <button type="submit" class="btn btn--secondary">Apagar</button>
+                                                </form>
+                                            {{else if .PuedeEncender}}
+                                                <form method="post" action="/instancias/{{.Nombre}}/encender">
+                                                    <button type="submit" class="btn btn--secondary">Encender</button>
+                                                </form>
+                                            {{end}}
                                             <form method="post" action="/instancias/{{.Nombre}}/eliminar"
                                                   data-confirmar="¿Eliminar {{.Dominio}}? Se apagará y borrará su máquina virtual.">
                                                 <button type="submit" class="btn btn--danger" {{if not .PuedeEliminar}}disabled{{end}}>Eliminar</button>

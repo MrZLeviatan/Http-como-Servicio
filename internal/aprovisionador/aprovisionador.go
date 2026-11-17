@@ -38,6 +38,16 @@ const (
 	limiteCreacion    = 15 * time.Minute
 	limitePublicacion = 5 * time.Minute
 	limiteEliminacion = 3 * time.Minute
+	limiteEncendido   = 5 * time.Minute
+	limiteApagado     = 2 * time.Minute
+
+	// esperaApagadoOrdenado: cuánto se espera a que Debian se apague solo
+	// antes de cortarle la energía.
+	esperaApagadoOrdenado = 60 * time.Second
+
+	// intervaloSincronizacion: cada cuánto se compara el estado guardado con
+	// el estado real de las VMs en VirtualBox.
+	intervaloSincronizacion = 15 * time.Second
 )
 
 // Aprovisionador coordina todos los módulos.
@@ -391,6 +401,174 @@ func (a *Aprovisionador) eliminar(inst modelo.Instancia) {
 		return
 	}
 	log.Printf("[eliminar] %s eliminada", inst.Nombre)
+}
+
+// ──────────────────────────── ENCENDER ────────────────────────────
+
+// Encender arranca la VM de una instancia apagada y espera (en segundo plano)
+// a que vuelva a responder en su IP. Su registro DNS y su contenido se
+// conservan, así que la página vuelve a estar disponible tal como estaba.
+func (a *Aprovisionador) Encender(nombre string) error {
+	// Solo se puede encender si está apagada.
+	inst, err := a.almacen.Actualizar(nombre, func(i *modelo.Instancia) error {
+		if !i.PuedeEncender() {
+			return fmt.Errorf("la instancia '%s' no está apagada (estado: %s)", i.Nombre, i.Estado)
+		}
+		i.Estado = modelo.EstadoEncendiendo
+		i.Detalle = "Encendiendo la máquina virtual"
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	// El arranque real va en segundo plano.
+	a.enSegundoPlano(func() { a.encender(inst) })
+	log.Printf("[encender] %s solicitada", nombre)
+	return nil
+}
+
+// encender arranca la VM y comprueba que responde con el hostname correcto.
+func (a *Aprovisionador) encender(inst modelo.Instancia) {
+	// Contexto con tiempo máximo para el encendido.
+	ctx, cancelar := context.WithTimeout(context.Background(), limiteEncendido)
+	defer cancelar()
+
+	// Paso 1: arrancar la VM (sin ventana). Si falla, sigue apagada.
+	if err := a.vbox.Iniciar(ctx, inst.NombreVM); err != nil {
+		log.Printf("[encender] %s FALLÓ: %v", inst.Nombre, err)
+		a.marcar(inst.Nombre, modelo.EstadoApagada, "No se pudo encender: "+err.Error())
+		return
+	}
+
+	// Paso 2: esperar a que Debian arranque y responda en SU IP definitiva
+	// (ya está configurada, no pasa por la IP temporal de la plantilla).
+	a.marcar(inst.Nombre, modelo.EstadoEncendiendo, "Esperando a que responda en "+inst.IP)
+	if err := a.ssh.EsperarDisponible(ctx, inst.IP); err != nil {
+		log.Printf("[encender] %s FALLÓ: %v", inst.Nombre, err)
+		a.marcar(inst.Nombre, modelo.EstadoError, "Encendida, pero no responde: "+err.Error())
+		return
+	}
+
+	// Paso 3: volver al estado que tenía antes de apagarse (lista o publicada).
+	_, _ = a.almacen.Actualizar(inst.Nombre, func(i *modelo.Instancia) error {
+		i.Estado = i.EstadoActivo()
+		i.Detalle = "Encendida. La página está disponible de nuevo."
+		return nil
+	})
+	log.Printf("[encender] %s encendida", inst.Nombre)
+}
+
+// ───────────────────────────── APAGAR ─────────────────────────────
+
+// Apagar apaga la VM de una instancia SIN borrarla: conserva su disco, su
+// contenido, su IP y su registro DNS, para encenderla después.
+func (a *Aprovisionador) Apagar(nombre string) error {
+	// Solo se puede apagar si está encendida y sin otra tarea en curso.
+	inst, err := a.almacen.Actualizar(nombre, func(i *modelo.Instancia) error {
+		if !i.PuedeApagar() {
+			return fmt.Errorf("la instancia '%s' no se puede apagar ahora (estado: %s)", i.Nombre, i.Estado)
+		}
+		i.Estado = modelo.EstadoApagando
+		i.Detalle = "Apagando la máquina virtual de forma ordenada"
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	// El apagado real va en segundo plano.
+	a.enSegundoPlano(func() { a.apagar(inst) })
+	log.Printf("[apagar] %s solicitada", nombre)
+	return nil
+}
+
+// apagar pide a Debian que se apague; si no lo hace a tiempo, corta la energía.
+func (a *Aprovisionador) apagar(inst modelo.Instancia) {
+	// Contexto con tiempo máximo para el apagado.
+	ctx, cancelar := context.WithTimeout(context.Background(), limiteApagado)
+	defer cancelar()
+
+	if err := a.vbox.ApagarOrdenado(ctx, inst.NombreVM, esperaApagadoOrdenado); err != nil {
+		// Si no se pudo apagar, la VM sigue encendida: vuelve a su estado activo.
+		log.Printf("[apagar] %s FALLÓ: %v", inst.Nombre, err)
+		_, _ = a.almacen.Actualizar(inst.Nombre, func(i *modelo.Instancia) error {
+			i.Estado = i.EstadoActivo()
+			i.Detalle = "No se pudo apagar: " + err.Error()
+			return nil
+		})
+		return
+	}
+
+	a.marcar(inst.Nombre, modelo.EstadoApagada, "Máquina apagada. Enciéndela para volver a publicar la página.")
+	log.Printf("[apagar] %s apagada", inst.Nombre)
+}
+
+// ───────────────────────────── SINCRONIZAR ─────────────────────────────
+
+// IniciarSincronizacion compara cada pocos segundos el estado guardado con el
+// estado real en VirtualBox. Así el dashboard se corrige si alguien enciende o
+// apaga una VM directamente desde VirtualBox. Se detiene cuando ctx se cancela.
+func (a *Aprovisionador) IniciarSincronizacion(ctx context.Context) {
+	a.enSegundoPlano(func() {
+		// Un "ticker" envía una señal cada intervaloSincronizacion.
+		reloj := time.NewTicker(intervaloSincronizacion)
+		defer reloj.Stop()
+		for {
+			select {
+			case <-ctx.Done(): // La aplicación se está cerrando.
+				return
+			case <-reloj.C: // Pasó el intervalo: revisar.
+				a.sincronizar(ctx)
+			}
+		}
+	})
+}
+
+// sincronizar revisa SOLO las instancias en estado estable (lista, publicada
+// o apagada). Las que tienen una operación en curso se dejan quietas.
+func (a *Aprovisionador) sincronizar(ctx context.Context) {
+	for _, inst := range a.almacen.Listar() {
+		// Ignora las que están a mitad de algo o con error.
+		if !inst.Activa() && inst.Estado != modelo.EstadoApagada {
+			continue
+		}
+
+		// Pregunta a VirtualBox si la VM está corriendo (máx. 10 s por consulta).
+		consulta, cancelar := context.WithTimeout(ctx, 10*time.Second)
+		encendida, err := a.vbox.Encendida(consulta, inst.NombreVM)
+		cancelar()
+		if err != nil {
+			continue // VirtualBox no respondió: se reintenta en la próxima vuelta.
+		}
+
+		// Guarda el estado anterior para comprobar que nadie lo cambió mientras tanto.
+		anterior := inst.Estado
+		switch {
+		case inst.Activa() && !encendida:
+			// Figura encendida, pero en VirtualBox está apagada.
+			_, _ = a.almacen.Actualizar(inst.Nombre, func(i *modelo.Instancia) error {
+				if i.Estado != anterior {
+					return errors.New("cambió") // Otra operación la tomó: no tocar.
+				}
+				i.Estado = modelo.EstadoApagada
+				i.Detalle = "La máquina virtual se apagó fuera de la aplicación."
+				return nil
+			})
+			log.Printf("[sincronizar] %s figura apagada en VirtualBox", inst.Nombre)
+		case inst.Estado == modelo.EstadoApagada && encendida:
+			// Figura apagada, pero en VirtualBox está corriendo.
+			_, _ = a.almacen.Actualizar(inst.Nombre, func(i *modelo.Instancia) error {
+				if i.Estado != anterior {
+					return errors.New("cambió")
+				}
+				i.Estado = i.EstadoActivo()
+				i.Detalle = "La máquina virtual se encendió fuera de la aplicación."
+				return nil
+			})
+			log.Printf("[sincronizar] %s figura encendida en VirtualBox", inst.Nombre)
+		}
+	}
 }
 
 // ──────────────────────────── AUXILIARES ────────────────────────────

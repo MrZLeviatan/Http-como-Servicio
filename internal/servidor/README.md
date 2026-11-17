@@ -10,6 +10,8 @@ Handlers HTTP del panel de gestión: dashboard, formularios y API de estado.
 | POST | `/instancias` | `crearInstancia` | Botón **Aceptar** (campo `nombre`) |
 | POST | `/publicar` | `publicarContenido` | Botón **Publicar** (`nombre` + archivo `archivo`) |
 | POST | `/instancias/{nombre}/eliminar` | `eliminarInstancia` | Botón **Eliminar** |
+| POST | `/instancias/{nombre}/apagar` | `apagarInstancia` | Botón **Apagar** (solo en `lista`/`publicada`) |
+| POST | `/instancias/{nombre}/encender` | `encenderInstancia` | Botón **Encender** (solo en `apagada`) |
 | GET | `/api/instancias` | `apiInstancias` | Listado en JSON (lo consulta `app.js`) |
 | GET | `/static/...` | `FileServerFS` | CSS y JS incrustados |
 

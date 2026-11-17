@@ -21,6 +21,9 @@ const (
 	EstadoLista        Estado = "lista"        // Funciona, pero aún sin contenido del usuario.
 	EstadoPublicando   Estado = "publicando"   // Se está subiendo/descomprimiendo el .zip.
 	EstadoPublicada    Estado = "publicada"    // La página del usuario ya está en línea.
+	EstadoApagando     Estado = "apagando"     // Se está apagando la VM (sin borrarla).
+	EstadoApagada      Estado = "apagada"      // La VM existe pero está apagada: la página no responde.
+	EstadoEncendiendo  Estado = "encendiendo"  // Se está encendiendo la VM y esperando a que responda.
 	EstadoEliminando   Estado = "eliminando"   // Se está apagando y borrando la VM.
 	EstadoError        Estado = "error"        // Algo falló; ver el campo Detalle.
 )
@@ -54,16 +57,41 @@ func (i Instancia) IPConMascara() string {
 // (en ese caso no se debe publicar ni eliminar hasta que termine).
 func (i Instancia) EnProceso() bool {
 	switch i.Estado {
-	case EstadoCreando, EstadoConfigurando, EstadoPublicando, EstadoEliminando:
+	case EstadoCreando, EstadoConfigurando, EstadoPublicando,
+		EstadoApagando, EstadoEncendiendo, EstadoEliminando:
 		return true
 	default:
 		return false
 	}
 }
 
+// Activa indica si la VM está encendida y sirviendo (lista o publicada).
+func (i Instancia) Activa() bool {
+	return i.Estado == EstadoLista || i.Estado == EstadoPublicada
+}
+
+// EstadoActivo devuelve el estado que le corresponde cuando está encendida:
+// "publicada" si alguna vez se publicó contenido, o "lista" si no.
+func (i Instancia) EstadoActivo() Estado {
+	if i.PublicadaEn.IsZero() {
+		return EstadoLista
+	}
+	return EstadoPublicada
+}
+
 // PuedePublicar indica si se le puede subir contenido (ya está funcionando).
 func (i Instancia) PuedePublicar() bool {
-	return i.Estado == EstadoLista || i.Estado == EstadoPublicada
+	return i.Activa()
+}
+
+// PuedeApagar indica si se puede apagar (solo si está encendida y sin tareas).
+func (i Instancia) PuedeApagar() bool {
+	return i.Activa()
+}
+
+// PuedeEncender indica si se puede encender (solo si está apagada).
+func (i Instancia) PuedeEncender() bool {
+	return i.Estado == EstadoApagada
 }
 
 // PuedeEliminar indica si se puede borrar (cualquier estado que no esté a mitad de algo).

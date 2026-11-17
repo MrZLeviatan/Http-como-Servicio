@@ -29,7 +29,7 @@ alm.Actualizar("paisajes", func(i *modelo.Instancia) error {
 
 **Escritura segura.** Cada cambio escribe primero `instancias.json.tmp` y luego lo renombra. El renombrado es atómico, así que el archivo nunca queda a medio escribir.
 
-**Recuperación.** Si la app se cerró a mitad de una operación (`creando`, `publicando`...), al volver a abrir esa instancia pasa a `error` con un mensaje. La goroutine que la procesaba ya no existe, y así el usuario puede eliminarla.
+**Recuperación.** Si la app se cerró a mitad de una operación (`creando`, `publicando`...), al volver a abrir esa instancia pasa a `error` con un mensaje. La goroutine que la procesaba ya no existe, y así el usuario puede eliminarla. Un `encendiendo` o `apagando` interrumpido no daña la VM: pasa a `apagada` y la sincronización con VirtualBox corrige el estado real en los siguientes 15 s.
 
 ## Formato del archivo
 
